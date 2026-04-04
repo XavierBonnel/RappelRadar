@@ -1,0 +1,24 @@
+# Fichiers système
+.DS_Store
+Thumbs.db
+*.log
+node_modules/
+
+# Fichiers de développement
+*.swp
+*.swo
+*~
+
+# Environnement
+.env
+.env.local
+
+# Build
+dist/
+build/
+*.min.js
+*.min.css
+
+# IDE
+.vscode/
+.idea/
