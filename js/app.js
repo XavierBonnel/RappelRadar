@@ -10,27 +10,20 @@ const RAPPEL_API_URL = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/d
 const API_TIMEOUT   = 8000;
 
 // ── ÉTAT GLOBAL ─────────────────────────────────────────────────────
-let recallsData    = [];   // Données chargées depuis l'API
+let recallsData    = [];
 let recallsLoading = false;
 let recallsUsedMock = false;
 let prevPage = "#accueil";
 
-// Filtres actifs
-let activeRisk     = "all";   // all | danger | preventif | information
-let activeCategory = "all";   // all | Alimentaire | Médicaments | Cosmétiques | Jouets | Électronique | Vêtements | Maison
-let activeSort     = "date";  // date | criticite | categorie
-let activeDays     = "30";    // 7 | 30 | 90
+let activeRisk     = "all";
+let activeCategory = "all";
+let activeSort     = "date";
+let activeDays     = "30";
 
-// Recherche
 let searchTerm = "";
+let activeDistributorName = null;
 
 // ── UTILITAIRE DEBOUNCE ──────────────────────────────────────────────
-/**
- * Fonction debounce simple
- * @param {Function} fn - Fonction à débouncer
- * @param {number} delay - Délai en ms
- * @returns {Function} Fonction débouncée
- */
 function debounce(fn, delay) {
   let timer = null;
   return function(...args) {
@@ -39,7 +32,7 @@ function debounce(fn, delay) {
   };
 }
 
-// ── MOCK DATA (10 rappels représentatifs) ───────────────────────────
+// ── MOCK DATA (dates mises à jour pour rendre les filtres testables) ─
 const MOCK_RECALLS = [
   {
     code: "3271234567890",
@@ -49,9 +42,9 @@ const MOCK_RECALLS = [
     distributor: "U Express, Super U",
     reason: "Anomalie sur la date de péremption — plusieurs lots retirés par mesure de précaution. Ne consommez pas les produits portant le code indiqué sur l'emballage.",
     severity: "preventif",
-    date: "20/03/2026",
+    date: "23/04/2026",
     image: "https://images.openfoodfacts.org/images/products/325/622/000/5921/front_fr.264.400.jpg",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   },
   {
     code: "3489771003485",
@@ -61,9 +54,9 @@ const MOCK_RECALLS = [
     distributor: "E.Leclerc",
     reason: "Risque de présence de Listeria monocytogenes. Ne consommez pas ce produit et rapportez-le en magasin.",
     severity: "danger",
-    date: "18/03/2026",
+    date: "21/04/2026",
     image: "https://images.openfoodfacts.org/images/products/348/977/100/3485/front_fr.276.400.jpg",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   },
   {
     code: "3268840001055",
@@ -73,9 +66,9 @@ const MOCK_RECALLS = [
     distributor: "Biocoop",
     reason: "Conditionnement défectueux — risque de moisissures. Les lots indiqués sont concernés.",
     severity: "preventif",
-    date: "15/03/2026",
+    date: "16/04/2026",
     image: "https://images.openfoodfacts.org/images/products/326/884/000/1055/front_fr.276.400.jpg",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   },
   {
     code: "3175900012210",
@@ -85,9 +78,9 @@ const MOCK_RECALLS = [
     distributor: "Carrefour",
     reason: "Risque microbiologique détecté lors des contrôles DGCCRF. Cessez l'utilisation et rapportez le produit.",
     severity: "danger",
-    date: "12/03/2026",
+    date: "10/04/2026",
     image: "https://images.openfoodfacts.org/images/products/317/590/001/2210/front_fr.276.400.jpg",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   },
   {
     code: "3564700953294",
@@ -97,9 +90,9 @@ const MOCK_RECALLS = [
     distributor: "Carrefour",
     reason: "Traces de polyéthylène — ne pas consommer. Rappel officiel DGCCRF.",
     severity: "danger",
-    date: "10/03/2026",
+    date: "01/04/2026",
     image: "https://images.openfoodfacts.org/images/products/356/470/095/3294/front_fr.276.400.jpg",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   },
   {
     code: "3306949165722",
@@ -109,9 +102,9 @@ const MOCK_RECALLS = [
     distributor: "Kiabi",
     reason: "Cordons de capuche — risque de strangulation pour les enfants. Retrait du marché européen.",
     severity: "danger",
-    date: "08/03/2026",
+    date: "25/03/2026",
     image: "",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   },
   {
     code: "3401593201071",
@@ -121,9 +114,9 @@ const MOCK_RECALLS = [
     distributor: "JouéClub",
     reason: "Petites pièces détachables — risque d'étouffement pour les enfants de 0 à 3 ans.",
     severity: "danger",
-    date: "05/03/2026",
+    date: "10/03/2026",
     image: "",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   },
   {
     code: "8806098193941",
@@ -133,9 +126,9 @@ const MOCK_RECALLS = [
     distributor: "Boulanger",
     reason: "Risque de surchauffe et de brûlure. Rappel officiel DGCCRF.",
     severity: "danger",
-    date: "01/03/2026",
+    date: "20/02/2026",
     image: "",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   },
   {
     code: "3760171840029",
@@ -145,9 +138,9 @@ const MOCK_RECALLS = [
     distributor: "Nocibé",
     reason: "Non-conformité cosmétique — présence de substances non autorisées.",
     severity: "information",
-    date: "25/02/2026",
+    date: "15/02/2026",
     image: "https://images.openfoodfacts.org/images/products/376/017/184/0029/front_fr.276.400.jpg",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   },
   {
     code: "3228887000508",
@@ -157,17 +150,101 @@ const MOCK_RECALLS = [
     distributor: "Casino",
     reason: "Anomalie de fermentation détectée sur certains lots. Par précaution, ne pas consommer.",
     severity: "preventif",
-    date: "22/02/2026",
+    date: "10/01/2026",
     image: "https://images.openfoodfacts.org/images/products/322/888/700/0508/front_fr.276.400.jpg",
-    source: "rappels.conso.gouv.fr"
+    source: "rappel.conso.gouv.fr"
   }
 ];
+
+// ── TERMES GÉNÉRIQUES À EXCLURE DU CLASSEMENT ────────────────────────
+const DISTRIBUTOR_BLACKLIST = [
+  "boucherie", "boulangerie", "charcuterie", "épicerie", "poissonnerie",
+  "primeur", "traiteur", "sandwicherie", "supérette", "fromagerie",
+  "épicerie fine", "cave", "caviste", "rôtisserie", "rotisserie",
+  "crêperie", "creperie", "pizzeria", "restaurant", "snack", "kebab",
+  "pâtisserie", "patisserie", "confiserie", "torréfacteur"
+];
+
+// ── MAPPING DISTRIBUTEURS → LOGOS ────────────────────────────────────
+const DISTRIBUTOR_MAP = [
+  { keys: ["leclerc", "e.leclerc", "e leclerc"],                            domain: "e.leclerc",          name: "E.Leclerc" },
+  { keys: ["carrefour", "market carrefour", "carrefour market",
+           "carrefour city", "carrefour express", "carrefour contact"],     domain: "carrefour.fr",       name: "Carrefour" },
+  { keys: ["intermarché", "intermarche", "netto"],                          domain: "intermarche.com",    name: "Intermarché" },
+  { keys: ["système u", "systeme u", "super u", "u express",
+           "hyper u", "marché u", "utile", "super-u"],                      domain: "magasins-u.com",     name: "Système U" },
+  { keys: ["auchan", "simply market", "auchan supermarché"],                domain: "auchan.fr",          name: "Auchan" },
+  { keys: ["lidl"],                                                         domain: "lidl.fr",            name: "Lidl" },
+  { keys: ["aldi"],                                                         domain: "aldi.fr",            name: "Aldi" },
+  { keys: ["casino", "leader price", "géant casino", "geant casino",
+           "spar", "vival", "petit casino"],                                domain: "groupe-casino.fr",   name: "Casino" },
+  { keys: ["cora"],                                                         domain: "cora.fr",            name: "Cora" },
+  { keys: ["colruyt"],                                                      domain: "colruyt.fr",         name: "Colruyt" },
+  { keys: ["monoprix"],                                                     domain: "monoprix.fr",        name: "Monoprix" },
+  { keys: ["franprix"],                                                     domain: "franprix.fr",        name: "Franprix" },
+  { keys: ["biocoop"],                                                      domain: "biocoop.fr",         name: "Biocoop" },
+  { keys: ["bio c'bon", "bio c bon"],                                       domain: "bio-c-bon.eu",       name: "Bio c' Bon" },
+  { keys: ["naturalia"],                                                    domain: "naturalia.fr",       name: "Naturalia" },
+  { keys: ["thiriet"],                                                      domain: "thiriet.com",        name: "Thiriet" },
+  { keys: ["picard"],                                                       domain: "picard.fr",          name: "Picard" },
+  { keys: ["metro", "metro cash & carry"],                                  domain: "metro.fr",           name: "Metro" },
+  { keys: ["boulanger"],                                                    domain: "boulanger.com",      name: "Boulanger" },
+  { keys: ["fnac"],                                                         domain: "fnac.com",           name: "Fnac" },
+  { keys: ["darty"],                                                        domain: "darty.com",          name: "Darty" },
+  { keys: ["nocibé", "nocibe"],                                             domain: "nocibe.fr",          name: "Nocibé" },
+  { keys: ["sephora"],                                                      domain: "sephora.fr",         name: "Sephora" },
+  { keys: ["kiabi"],                                                        domain: "kiabi.com",          name: "Kiabi" },
+  { keys: ["decathlon"],                                                    domain: "decathlon.fr",       name: "Decathlon" },
+  { keys: ["amazon"],                                                       domain: "amazon.fr",          name: "Amazon" },
+  { keys: ["jouéclub", "joueclub", "joué club"],                            domain: "joueclub.fr",        name: "JouéClub" },
+  { keys: ["king jouet", "king-jouet"],                                     domain: "king-jouet.com",     name: "King Jouet" },
+  { keys: ["picwic"],                                                       domain: "picwictoys.com",     name: "Picwic Toys" },
+  { keys: ["ikea"],                                                         domain: "ikea.com",           name: "IKEA" },
+  { keys: ["action"],                                                       domain: "action.com",         name: "Action" },
+  { keys: ["maisons du monde"],                                             domain: "maisonsdumonde.com", name: "Maisons du Monde" },
+  { keys: ["leroy merlin"],                                                 domain: "leroymerlin.fr",     name: "Leroy Merlin" },
+  { keys: ["bricomarché", "bricomarche"],                                   domain: "bricomarche.com",    name: "Bricomarché" },
+  { keys: ["castorama"],                                                    domain: "castorama.fr",       name: "Castorama" },
+  { keys: ["brico dépôt", "brico depot"],                                   domain: "bricodepot.fr",      name: "Brico Dépôt" },
+  { keys: ["jardiland"],                                                    domain: "jardiland.com",      name: "Jardiland" },
+  { keys: ["la grande épicerie", "grande épicerie"],                        domain: "lagrandeepicerie.com", name: "La Grande Épicerie" },
+  { keys: ["cultura"],                                                      domain: "cultura.com",        name: "Cultura" },
+  { keys: ["leclerc drive", "e.leclerc drive"],                             domain: "leclercdrive.fr",    name: "E.Leclerc Drive" },
+];
+
+function matchDistributor(name) {
+  if (!name) return null;
+  const n = name.toLowerCase().trim();
+  for (let i = 0; i < DISTRIBUTOR_MAP.length; i++) {
+    const d = DISTRIBUTOR_MAP[i];
+    if (d.keys.some(function(k) { return n.includes(k); })) return d;
+  }
+  return null;
+}
+
+function logoSrc(match) {
+  if (match.logoUrl) return match.logoUrl;
+  return 'https://www.google.com/s2/favicons?domain=' + match.domain + '&sz=256';
+}
+
+function distributorLogoHTML(distributorName, size) {
+  if (!distributorName) return "";
+  const match = matchDistributor(distributorName);
+  if (!match) return "";
+  const s = size || 18;
+  const src = logoSrc(match);
+  const fallback = 'https://www.google.com/s2/favicons?domain=' + match.domain + '&sz=256';
+  const onerr = match.logoUrl
+    ? 'this.onerror=null;this.src=\'' + fallback + '\''
+    : 'this.style.display=\'none\'';
+  return '<img src="' + src + '" alt="' + htmlEncode(match.name) + '" class="dist-logo" ' +
+    'width="' + s + '" height="' + s + '" onerror="' + onerr + '">';
+}
 
 // ===================================================================
 // UTILS
 // ===================================================================
 
-/** Encode HTML pour prévenir les injections */
 function htmlEncode(str) {
   if (str == null) return "";
   return String(str)
@@ -178,7 +255,6 @@ function htmlEncode(str) {
     .replace(/'/g, "&#39;");
 }
 
-/** Retourne l'emoji catégorie */
 function categoryIcon(cat) {
   const m = {
     "Alimentaire":  "🍎",
@@ -192,7 +268,6 @@ function categoryIcon(cat) {
   return m[cat] || "📦";
 }
 
-/** Normalise une catégorie brute de l'API vers nos catégories affichables */
 function normalizeCategory(cat) {
   if (!cat) return "Autre";
   const c = cat.toLowerCase();
@@ -206,7 +281,6 @@ function normalizeCategory(cat) {
   return cat;
 }
 
-/** Détermine la sévérité depuis le champ risques_encourus */
 function computeSeverity(risque) {
   const r = (risque || "").toLowerCase();
   if (/chimique|microbiologique|matière étrangère|dangereux/.test(r)) return "danger";
@@ -214,21 +288,18 @@ function computeSeverity(risque) {
   return "information";
 }
 
-/** Badge HTML sévérité (petit) */
 function severityBadge(severity) {
   if (severity === "danger")      return '<span class="badge badge-danger">🔴 Critique</span>';
   if (severity === "preventif")   return '<span class="badge badge-preventif">🟠 Important</span>';
   return '<span class="badge badge-information">🟢 Info</span>';
 }
 
-/** Badge HTML sévérité (grand, page détail) */
 function severityBadgeLarge(severity) {
   if (severity === "danger")    return '<span class="badge-lg sev-danger">🚨 Danger critique</span>';
   if (severity === "preventif") return '<span class="badge-lg sev-preventif">🟧 Rappel préventif</span>';
   return '<span class="badge-lg sev-information">ℹ️ Information</span>';
 }
 
-/** Retourne "Nouveau" si la date est dans les 7 derniers jours */
 function isNew(dateStr) {
   try {
     const parts = dateStr.split("/");
@@ -238,7 +309,6 @@ function isNew(dateStr) {
   } catch (e) { return false; }
 }
 
-/** Retourne une date relative lisible */
 function relativeDate(dateStr) {
   try {
     const parts = dateStr.split("/");
@@ -254,7 +324,6 @@ function relativeDate(dateStr) {
   } catch (e) { return dateStr; }
 }
 
-/** Parse une date au format JJ/MM/AAAA */
 function parseFrDate(dateStr) {
   try {
     const p = dateStr.split("/");
@@ -262,12 +331,103 @@ function parseFrDate(dateStr) {
   } catch (e) { return new Date(0); }
 }
 
-/** Génère le HTML image avec fallback emoji */
 function imgHTML(src, name, cls) {
   if (!src) return '<span>' + categoryIcon(name) + '</span>';
   const safe = htmlEncode(src);
   const safeName = htmlEncode(name);
   return '<img src="' + safe + '" alt="' + safeName + '" onerror="this.parentNode.innerHTML=\'<span>📦</span>\'">';
+}
+
+// ===================================================================
+// DISTRIBUTOR RANKING
+// ===================================================================
+
+function computeDistributorRanking(data) {
+  const counts = {};
+  data.forEach(function(p) {
+    if (!p.distributor) return;
+    const parts = p.distributor.split(/[,;]/).map(function(s) { return s.trim(); }).filter(Boolean);
+    parts.forEach(function(d) {
+      const dLower = d.toLowerCase();
+      if (DISTRIBUTOR_BLACKLIST.some(function(b) {
+        return dLower === b || dLower === b + "s" ||
+               dLower.startsWith(b + " ") || dLower.startsWith(b + "s ");
+      })) return;
+      const match = matchDistributor(d);
+      const key = match ? match.name : d;
+      if (!counts[key]) counts[key] = { name: key, count: 0, match: match, raw: d };
+      counts[key].count++;
+    });
+  });
+  return Object.values(counts)
+    .sort(function(a, b) { return b.count - a.count; })
+    .slice(0, 5);
+}
+
+function renderDistributorPodium(ranking) {
+  if (!ranking || ranking.length === 0) return "";
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const maxCount = ranking[0].count;
+
+  // Affichage ascendant : du moins rappelé (gauche 🥇) au plus rappelé (droite)
+  const displayItems = ranking.slice().reverse();
+
+  const items = displayItems.map(function(item, i) {
+    const medal = medals[i] || ("#" + (i + 1));
+    const isFirst = i === 0;
+    const pct = Math.max(18, Math.round((item.count / maxCount) * 100));
+    const logoEl = (function() {
+      if (!item.match || !item.match.domain) return "";
+      const src = logoSrc(item.match);
+      const fallback = 'https://www.google.com/s2/favicons?domain=' + item.match.domain + '&sz=256';
+      const onerr = item.match.logoUrl
+        ? 'this.onerror=null;this.src=\'' + fallback + '\''
+        : 'this.style.display=\'none\'';
+      return '<img src="' + src + '" alt="' + htmlEncode(item.name) + '" class="podium-logo-img" onerror="' + onerr + '">';
+    })();
+    const safeName = htmlEncode(item.name).replace(/'/g, "&#39;");
+
+    return (
+      '<div class="podium-item' + (isFirst ? " podium-first" : "") + '" ' +
+           'onclick="filterByDistributor(\'' + safeName + '\')" title="Voir les rappels ' + safeName + '">' +
+        '<div class="podium-medal">' + medal + '</div>' +
+        '<div class="podium-logo-wrap">' + logoEl + '</div>' +
+        '<div class="podium-name">' + htmlEncode(item.name) + '</div>' +
+        '<div class="podium-bar-wrap">' +
+          '<div class="podium-bar" style="width:' + pct + '%"></div>' +
+        '</div>' +
+        '<div class="podium-count">' + item.count + ' rappel' + (item.count > 1 ? 's' : '') + '</div>' +
+      '</div>'
+    );
+  }).join("");
+
+  return (
+    '<div class="distributor-podium">' +
+      '<div class="section-header">' +
+        '<div>' +
+          '<div class="section-title">🏆 Classement distributeurs</div>' +
+          '<div class="section-subtitle">Du moins au plus de rappels officiels · cliquez pour filtrer</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="podium-grid">' + items + '</div>' +
+    '</div>'
+  );
+}
+
+function filterByDistributor(name) {
+  activeDistributorName = name;
+  searchTerm = "";
+  const navInput = document.getElementById("navSearchInput");
+  if (navInput) navInput.value = "";
+  navigateTo("#alertes");
+}
+
+function clearDistributorFilter() {
+  activeDistributorName = null;
+  const row = document.getElementById("distFilterRow");
+  if (row) row.style.display = "none";
+  el_reRenderAlertes();
 }
 
 // ===================================================================
@@ -360,7 +520,6 @@ function router() {
   if (page !== "produit") prevPage = location.hash;
   renderPage(page, query);
   setActiveNav(page);
-  // Met à jour le titre de la topnav (utilité sur mobile)
   window.scrollTo(0, 0);
   closeSidebarMobile();
 }
@@ -379,23 +538,23 @@ function applyFilters(data) {
   const term    = searchTerm.trim().toLowerCase();
 
   return data.filter(function(p) {
-    // Filtre jours
     const d = parseFrDate(p.date);
     if (d < cutoff) return false;
-
-    // Filtre risque
     if (activeRisk !== "all" && p.severity !== activeRisk) return false;
-
-    // Filtre catégorie
     if (activeCategory !== "all" && p.category !== activeCategory) return false;
-
-    // Recherche texte
+    if (activeDistributorName) {
+      const parts = (p.distributor || "").split(/[,;]/).map(function(s) { return s.trim(); });
+      const matched = parts.some(function(d) {
+        const m = matchDistributor(d);
+        return m && m.name === activeDistributorName;
+      });
+      if (!matched) return false;
+    }
     if (term) {
       const haystack = [p.name, p.brand, p.code, p.category, p.distributor]
         .map(function(s) { return (s || "").toLowerCase(); }).join(" ");
       if (haystack.indexOf(term) === -1) return false;
     }
-
     return true;
   });
 }
@@ -413,34 +572,49 @@ function applySort(data) {
   return copy;
 }
 
-// Raccourcis pour les handlers de chips/sort
 function setRisk(val) {
   activeRisk = val;
-  const { page, query } = getCurrentPage();
+  const { page } = getCurrentPage();
   if (page === "alertes") el_reRenderAlertes();
 }
 
 function setCategory(val) {
   activeCategory = val;
-  const { page, query } = getCurrentPage();
+  const { page } = getCurrentPage();
   if (page === "alertes") el_reRenderAlertes();
 }
 
 function setSort(val) {
   activeSort = val;
-  const { page, query } = getCurrentPage();
+  const { page } = getCurrentPage();
   if (page === "alertes") el_reRenderAlertes();
 }
 
 function setDays(val) {
   activeDays = val;
-  const { page, query } = getCurrentPage();
+  const { page } = getCurrentPage();
   if (page === "alertes") el_reRenderAlertes();
 }
 
-/** Re-rend uniquement la liste des cards (évite de redessiner toute la page) */
+/** Met à jour les classes active sur tous les boutons de filtre sans re-render la toolbar */
+function syncFilterUI() {
+  document.querySelectorAll("[data-sort-val]").forEach(function(btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-sort-val") === activeSort);
+  });
+  document.querySelectorAll("[data-days-val]").forEach(function(btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-days-val") === activeDays);
+  });
+  document.querySelectorAll("[data-risk-val]").forEach(function(btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-risk-val") === activeRisk);
+  });
+  document.querySelectorAll("[data-cat-val]").forEach(function(btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-cat-val") === activeCategory);
+  });
+}
+
+/** Re-rend uniquement la grille des cards + met à jour l'état des boutons de filtre */
 function el_reRenderAlertes() {
-  const grid = document.getElementById("alertesGrid");
+  const grid  = document.getElementById("alertesGrid");
   const count = document.getElementById("alertesCount");
   if (!grid) return;
 
@@ -450,6 +624,8 @@ function el_reRenderAlertes() {
     : '<div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-title">Aucun rappel trouvé</div><div class="empty-state-desc">Aucun rappel ne correspond à vos critères de filtrage.</div></div>';
 
   if (count) count.textContent = filtered.length + " résultat" + (filtered.length !== 1 ? "s" : "");
+
+  syncFilterUI();
 }
 
 // ===================================================================
@@ -459,8 +635,8 @@ function el_reRenderAlertes() {
 function computeStats(data) {
   const src = data.length > 0 ? data : MOCK_RECALLS;
   const now = new Date();
-  const cutoff30  = new Date(now - 30 * 86400000);
-  const cutoff7   = new Date(now - 7 * 86400000);
+  const cutoff30 = new Date(now - 30 * 86400000);
+  const cutoff7  = new Date(now - 7 * 86400000);
 
   let critiques  = 0;
   let preventifs = 0;
@@ -479,7 +655,7 @@ function computeStats(data) {
 }
 
 // ===================================================================
-// HTML — PRODUCT CARD (design rappel-radar)
+// HTML — PRODUCT CARD
 // ===================================================================
 
 function productCardHTML(p) {
@@ -493,13 +669,20 @@ function productCardHTML(p) {
   const encodedCode = encodeURIComponent(p.code);
   const reasonShort = p.reason ? (p.reason.length > 80 ? p.reason.slice(0, 80) + "…" : p.reason) : "";
 
+  const distLogo = p.distributor ? distributorLogoHTML(p.distributor, 16) : "";
+  const distHTML = p.distributor
+    ? htmlEncode(p.brand) + ' · ' + (distLogo ? distLogo + ' ' : '') + htmlEncode(p.distributor)
+    : htmlEncode(p.brand);
+
   return (
     '<div class="product-card ' + sevCls + '" data-code="' + htmlEncode(p.code) + '">' +
-      '<div class="product-img">' + imgHTML(p.image, categoryIcon(p.category), "product-img") + '</div>' +
+      '<div class="product-img" onclick="navigateTo(\'#produit?id=' + encodedCode + '\')" title="Voir le détail">' +
+        imgHTML(p.image, categoryIcon(p.category), "product-img") +
+      '</div>' +
       '<div class="product-info">' +
         '<div class="product-meta">' + sevBadge + newBadge + catBadge + '</div>' +
-        '<div class="product-name">' + htmlEncode(p.name) + '</div>' +
-        '<div class="product-brand">' + htmlEncode(p.brand) + (p.distributor ? " · " + htmlEncode(p.distributor) : "") + '</div>' +
+        '<div class="product-name clickable" onclick="navigateTo(\'#produit?id=' + encodedCode + '\')">' + htmlEncode(p.name) + '</div>' +
+        '<div class="product-brand">' + distHTML + '</div>' +
         '<div class="product-tags">' +
           (reasonShort ? '<span class="tag">' + htmlEncode(reasonShort) + '</span>' : "") +
         '</div>' +
@@ -511,7 +694,7 @@ function productCardHTML(p) {
         '</div>' +
         '<div class="card-actions">' +
           '<button class="' + watchCls + '" onclick="handleWatchToggle(event,\'' + encodedCode + '\')" title="' + (inW ? "Retirer de ma liste" : "Ajouter à ma liste") + '">' + watchTxt + '</button>' +
-          '<button class="btn-detail" onclick="navigateTo(\'#produit?id=' + encodedCode + '\')">Voir →</button>' +
+          '<button class="btn-detail" onclick="event.stopPropagation();navigateTo(\'#produit?id=' + encodedCode + '\')">Voir →</button>' +
         '</div>' +
       '</div>' +
     '</div>'
@@ -556,7 +739,6 @@ function renderPage(page, query) {
       case "apropos": el.innerHTML = renderApropos(); break;
       default:        el.innerHTML = renderAccueil(); break;
     }
-    // Attache les listeners dynamiques après injection HTML
     bindPageListeners(page);
   } catch (err) {
     console.error("[RappelRadar] Erreur rendu page '" + page + "':", err);
@@ -567,11 +749,13 @@ function renderPage(page, query) {
 // ── PAGE ACCUEIL ────────────────────────────────────────────────────
 function renderAccueil() {
   const stats = computeStats(recallsData);
-  const recent = (recallsData.length > 0 ? recallsData : MOCK_RECALLS).slice(0, 6);
+  const data = recallsData.length > 0 ? recallsData : MOCK_RECALLS;
+  const recent = data.slice(0, 6);
   const recentCards = recent.map(scrollCardHTML).join("");
+  const ranking = computeDistributorRanking(data);
+  const podiumHTML = renderDistributorPodium(ranking);
 
   return (
-    // Hero Stats
     '<div class="hero-stats">' +
       '<div class="stats-inner">' +
         '<div class="stats-title">' +
@@ -588,18 +772,9 @@ function renderAccueil() {
     '</div>' +
 
     '<div class="main-wrap">' +
-      // Scan banner
-      '<div class="scan-banner">' +
-        '<div class="scan-icon">📷</div>' +
-        '<div class="scan-text">' +
-          '<h3>Vérifier un produit que vous avez acheté</h3>' +
-          '<p>Saisissez le nom, la marque ou le numéro de lot pour une vérification immédiate.</p>' +
-        '</div>' +
-        '<button class="btn-scan" onclick="focusNavSearch()">Scanner un produit</button>' +
-      '</div>' +
+      podiumHTML +
 
-      // Rappels récents
-      '<div class="section-header">' +
+      '<div class="section-header" style="margin-top:28px">' +
         '<div>' +
           '<div class="section-title">Rappels récents</div>' +
           '<div class="section-subtitle">Les 6 derniers rappels publiés</div>' +
@@ -608,12 +783,10 @@ function renderAccueil() {
       '</div>' +
       '<div class="scroll-row">' + recentCards + '</div>' +
 
-      // Demo notice si mock
       (recallsUsedMock ? '<div class="demo-notice" style="margin-top:24px"><span class="demo-notice-icon">⚠️</span>Données de démonstration — l\'API n\'a pas pu être chargée.</div>' : '') +
 
-      // Trust badges
       '<div class="trust-badges">' +
-        '<a class="trust-badge" href="https://rappels.conso.gouv.fr" target="_blank" rel="noopener">' +
+        '<a class="trust-badge" href="https://rappel.conso.gouv.fr" target="_blank" rel="noopener">' +
           '<span class="trust-badge-icon">🏛️</span>Source officielle RappelConso' +
         '</a>' +
         '<div class="trust-badge"><span class="trust-badge-icon">⚡</span>Données temps réel</div>' +
@@ -639,7 +812,6 @@ function renderAlertes() {
     );
   }
 
-  // Chips risque
   const riskChips = [
     { val: "all",         label: "Tous",        cls: "" },
     { val: "danger",      label: "🔴 Critique",  cls: "danger" },
@@ -647,10 +819,9 @@ function renderAlertes() {
     { val: "information", label: "🟢 Info",      cls: "low" }
   ].map(function(c) {
     const act = activeRisk === c.val ? " active" : "";
-    return '<button class="chip ' + c.cls + act + '" onclick="setRisk(\'' + c.val + '\')">' + c.label + '</button>';
+    return '<button class="chip ' + c.cls + act + '" data-risk-val="' + c.val + '" onclick="setRisk(\'' + c.val + '\')">' + c.label + '</button>';
   }).join("");
 
-  // Chips catégorie
   const catChips = [
     { val: "all",          label: "Tout" },
     { val: "Alimentaire",  label: "🍎 Alimentaire" },
@@ -662,23 +833,21 @@ function renderAlertes() {
     { val: "Maison",       label: "🏠 Maison" }
   ].map(function(c) {
     const act = activeCategory === c.val ? " active" : "";
-    return '<button class="chip' + act + '" onclick="setCategory(\'' + htmlEncode(c.val) + '\')">' + c.label + '</button>';
+    return '<button class="chip' + act + '" data-cat-val="' + htmlEncode(c.val) + '" onclick="setCategory(\'' + htmlEncode(c.val) + '\')">' + c.label + '</button>';
   }).join("");
 
-  // Boutons tri
   const sortBtns = [
     { val: "date",      label: "📅 Plus récent" },
     { val: "criticite", label: "🔴 Criticité" },
     { val: "categorie", label: "🏷️ Catégorie" }
   ].map(function(s) {
     const act = activeSort === s.val ? " active" : "";
-    return '<button class="sort-btn' + act + '" onclick="setSort(\'' + s.val + '\')">' + s.label + '</button>';
+    return '<button class="sort-btn' + act + '" data-sort-val="' + s.val + '" onclick="setSort(\'' + s.val + '\')">' + s.label + '</button>';
   }).join("");
 
-  // Boutons jours
   const daysBtns = ["7", "30", "90"].map(function(d) {
     const act = activeDays === d ? " active" : "";
-    return '<button class="days-btn' + act + '" onclick="setDays(\'' + d + '\')">' + d + 'j</button>';
+    return '<button class="days-btn' + act + '" data-days-val="' + d + '" onclick="setDays(\'' + d + '\')">' + d + 'j</button>';
   }).join("");
 
   const gridItems = filtered.length > 0
@@ -687,6 +856,14 @@ function renderAlertes() {
 
   return (
     '<div class="toolbar">' +
+      (activeDistributorName
+        ? '<div class="toolbar-row" id="distFilterRow">' +
+            '<span class="toolbar-label">Enseigne :</span>' +
+            '<button class="chip active dist-chip" onclick="clearDistributorFilter()">' +
+              htmlEncode(activeDistributorName) + ' <span class="dist-chip-x">✕</span>' +
+            '</button>' +
+          '</div>'
+        : '<div id="distFilterRow" style="display:none"></div>') +
       '<div class="toolbar-row">' +
         '<span class="toolbar-label">Risque :</span>' +
         '<div class="chips">' + riskChips + '</div>' +
@@ -773,7 +950,6 @@ function renderMaliste() {
 
 // ── PAGE DÉTAIL PRODUIT ──────────────────────────────────────────────
 function renderProduit(query) {
-  // Décode le paramètre id
   const params = {};
   if (query) {
     query.split("&").forEach(function(pair) {
@@ -787,7 +963,6 @@ function renderProduit(query) {
   for (let i = 0; i < allData.length; i++) {
     if (allData[i].code === code) { product = allData[i]; break; }
   }
-  // Fallback mock
   if (!product) {
     for (let i = 0; i < MOCK_RECALLS.length; i++) {
       if (MOCK_RECALLS[i].code === code) { product = MOCK_RECALLS[i]; break; }
@@ -817,6 +992,16 @@ function renderProduit(query) {
     ? '<img class="detail-img" src="' + htmlEncode(product.image) + '" alt="' + htmlEncode(product.name) + '" onclick="openZoom(\'' + htmlEncode(product.image) + '\',\'' + htmlEncode(product.name) + '\')" title="Cliquer pour agrandir" onerror="this.parentNode.innerHTML=\'<span class=detail-img-placeholder>📦</span>\'">'
     : '<span class="detail-img-placeholder">' + categoryIcon(product.category) + '</span>';
 
+  const distMatch = product.distributor ? matchDistributor(product.distributor) : null;
+  const distLogoLarge = distMatch && distMatch.domain
+    ? (function() {
+        const src = logoSrc(distMatch);
+        const fallback = 'https://www.google.com/s2/favicons?domain=' + distMatch.domain + '&sz=256';
+        const onerr = distMatch.logoUrl ? 'this.onerror=null;this.src=\'' + fallback + '\'' : 'this.style.display=\'none\'';
+        return '<img src="' + src + '" alt="' + htmlEncode(distMatch.name) + '" class="dist-logo-detail" onerror="' + onerr + '">';
+      })()
+    : "";
+
   return (
     '<div class="detail-wrap">' +
       '<button class="back-btn" onclick="history.back()">← Retour</button>' +
@@ -837,7 +1022,10 @@ function renderProduit(query) {
 
           '<div class="detail-section">' +
             '<div class="detail-section-title">Distributeur</div>' +
-            '<p style="font-size:13.5px;color:var(--text-muted)">' + htmlEncode(product.distributor || "Non précisé") + '</p>' +
+            '<div class="detail-distributor">' +
+              distLogoLarge +
+              '<span>' + htmlEncode(product.distributor || "Non précisé") + '</span>' +
+            '</div>' +
           '</div>' +
 
           '<div class="detail-section">' +
@@ -857,7 +1045,7 @@ function renderProduit(query) {
 
           '<div class="detail-section">' +
             '<div class="detail-section-title">Source officielle</div>' +
-            '<a href="https://rappels.conso.gouv.fr" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">🏛️ rappels.conso.gouv.fr ↗</a>' +
+            '<a href="https://rappel.conso.gouv.fr" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">🏛️ rappel.conso.gouv.fr ↗</a>' +
           '</div>' +
 
           '<div class="detail-actions">' +
@@ -883,7 +1071,7 @@ function renderApropos() {
 
       '<div class="apropos-card">' +
         '<h3>Sources des données</h3>' +
-        '<p>Les informations sont issues de la base officielle <strong>RappelConso</strong> gérée par la DGCCRF, disponible sur <a href="https://rappels.conso.gouv.fr" target="_blank" rel="noopener" class="apropos-link">rappels.conso.gouv.fr</a>.</p>' +
+        '<p>Les informations sont issues de la base officielle <strong>RappelConso</strong> gérée par la DGCCRF, disponible sur <a href="https://rappel.conso.gouv.fr" target="_blank" rel="noopener" class="apropos-link">rappel.conso.gouv.fr</a>.</p>' +
       '</div>' +
 
       '<div class="apropos-card">' +
@@ -992,7 +1180,6 @@ function loadMoreRecalls() {
     });
 }
 
-/** Mappe un enregistrement API vers notre format interne */
 function mapApiRecord(r) {
   var codes = r.identification_produits;
   var code  = Array.isArray(codes) ? (codes[0] || "").trim() : (codes || "").trim();
@@ -1022,7 +1209,7 @@ function mapApiRecord(r) {
     severity:    severity,
     date:        formattedDate,
     image:       image,
-    source:      "rappels.conso.gouv.fr"
+    source:      "rappel.conso.gouv.fr"
   };
 }
 
@@ -1049,7 +1236,6 @@ function handleWatchToggle(event, encodedCode) {
     if (product) addToListe(product);
   }
 
-  // Met à jour le bouton sans re-render complet
   const btn = event.currentTarget;
   const inW = isInListe(code);
   btn.classList.toggle("active", inW);
@@ -1081,7 +1267,6 @@ function handleToggleListe(encodedCode) {
     }
     if (product) addToListe(product);
   }
-  // Re-render la page détail pour mettre à jour le bouton
   const { page, query } = getCurrentPage();
   renderPage(page, query);
 }
@@ -1100,14 +1285,13 @@ function handleShare(encodedCode) {
   }
 }
 
-/** Donne le focus à la barre de recherche principale */
 function focusNavSearch() {
   const input = document.getElementById("navSearchInput");
   if (input) input.focus();
 }
 
 // ===================================================================
-// LIGHTBOX ZOOM (identique à consoalert)
+// LIGHTBOX ZOOM
 // ===================================================================
 
 function openZoom(src, name) {
@@ -1124,7 +1308,6 @@ function openZoom(src, name) {
     "animation:fadeInZoom .2s ease"
   ].join(";");
 
-  // Animation CSS inline
   if (!document.getElementById("zoomStyle")) {
     const st = document.createElement("style");
     st.id = "zoomStyle";
@@ -1170,14 +1353,12 @@ function openZoom(src, name) {
 }
 
 // ===================================================================
-// LISTENERS DYNAMIQUES (après injection HTML)
+// LISTENERS DYNAMIQUES
 // ===================================================================
 
 function bindPageListeners(page) {
   if (page === "accueil" || page === "alertes") {
-    // Listener search nav (sync avec la barre en haut)
-    const navInput = document.getElementById("navSearchInput");
-    // Already bound globally
+    // navSearchInput déjà lié globalement
   }
 }
 
@@ -1192,7 +1373,6 @@ document.addEventListener("DOMContentLoaded", function() {
   router();
   loadRecalls();
 
-  // ── Burger menu ──
   const menuBtn = document.getElementById("menuToggle");
   if (menuBtn) menuBtn.addEventListener("click", openSidebarMobile);
 
@@ -1202,24 +1382,25 @@ document.addEventListener("DOMContentLoaded", function() {
   const overlay = document.getElementById("sidebarOverlay");
   if (overlay) overlay.addEventListener("click", closeSidebarMobile);
 
-  // Fermeture sidebar au clic extérieur
   document.addEventListener("click", function(e) {
     if (!e.target.closest("#sidebar") && !e.target.closest("#menuToggle")) {
       closeSidebarMobile();
     }
   });
 
-  // Fermeture sidebar avec Échap
   document.addEventListener("keydown", function(e) {
     if (e.key === "Escape") closeSidebarMobile();
   });
 
-  // ── Barre de recherche nav ──
   const navInput = document.getElementById("navSearchInput");
   if (navInput) {
     const handleSearchInput = debounce(function() {
       searchTerm = navInput.value;
-      // Si on est sur la page alertes, on re-filtre en live
+      if (searchTerm) {
+        activeDistributorName = null;
+        const row = document.getElementById("distFilterRow");
+        if (row) row.style.display = "none";
+      }
       const { page } = getCurrentPage();
       if (page === "alertes") el_reRenderAlertes();
     }, 300);
@@ -1227,6 +1408,7 @@ document.addEventListener("DOMContentLoaded", function() {
     navInput.addEventListener("keydown", function(e) {
       if (e.key === "Enter" && navInput.value.trim()) {
         searchTerm = navInput.value.trim();
+        activeDistributorName = null;
         activeCategory = "all";
         activeRisk = "all";
         navigateTo("#alertes");
@@ -1234,7 +1416,6 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // ── Bouton "Activer les alertes" ──
   const btnNotif = document.getElementById("btnNotif");
   if (btnNotif) {
     btnNotif.addEventListener("click", function() {
@@ -1253,7 +1434,6 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
-  // ── Fallback image globale ──
   document.addEventListener("error", function(e) {
     if (e.target && e.target.tagName === "IMG") {
       const p = e.target.parentNode;
